@@ -1,52 +1,51 @@
-def encode_move(r1, r2, pick, to):
-    if not (1 <= r1 <= 6) or not (1 <= r2 <= 6):
-        raise ValueError("Dice rolls must be between 1 and 6")
+def encode_move(pick, to, status):
     if not (0 <= pick <= 6):
         raise ValueError("Pick must be between 0 and 6")
-    if not (0 <= to <= 127):
-        raise ValueError("Destination block must be between 0 and 127")
-
-    if(pick == 0): pick = 0
-    elif(pick == r1): pick = 1
-    elif(pick == r2): pick = 2
+    if not (0 <= to <= 100):
+        raise ValueError("Destination must be between 0 and 100")
+    if not (0 <= status <= 3):
+        raise ValueError("Status must be between 0 and 3")
     
-    r1_bin = r1 & 0b111
-    r2_bin = r2 & 0b111
-    pick_bin = pick & 0b11
-    to_bin = to & 0b1111111
+    pick_bin = pick & 0b111     # 3 bits for pick (0-6)
+    to_bin = to & 0b1111111     # 7 bits for to (0-100)
+    status_bin = status & 0b11  # 2 bits for status (0-3)
 
-    data = (r1_bin << 13) | (r2_bin << 10) | (pick_bin << 8) | (to_bin << 1)
-    parity = bin(data).count("1") % 2 == 1
-    data |= int(parity)
+    # Combine: pick (3 bits) | to (7 bits) | status (2 bits) = 12 bits total
+    data = (pick_bin << 9) | (to_bin << 2) | status_bin
 
-    return f"{data:04X}"
+    return f"{data:03X}"
 
 
 def decode_move(hex_str):
-    if len(hex_str) != 4:
-        raise ValueError("Hex move must be 4 characters")
+    if len(hex_str) != 3:
+        raise ValueError("Hex move must be 3 characters")
 
     data = int(hex_str, 16)
 
-    parity = data & 1
-    bits15 = data >> 1
+    pick = (data >> 9) & 0b111      # Extract pick (3 bits)
+    to = (data >> 2) & 0b1111111    # Extract to (7 bits)
+    status = data & 0b11            # Extract status (2 bits)
 
-    if bin(bits15).count("1") % 2 != parity:
-        raise ValueError("Parity check failed")
+    return pick, to, status
 
-    r1 = (bits15 >> 12) & 0b111
-    r2 = (bits15 >> 9) & 0b111
-    pick_encoded = (bits15 >> 7) & 0b11
-    to = bits15 & 0b1111111
 
-    # Decode the pick value back to original dice value
-    if pick_encoded == 0:
-        pick = 0
-    elif pick_encoded == 1:
-        pick = r1
-    elif pick_encoded == 2:
-        pick = r2
-    else:
-        pick = pick_encoded  # fallback for any other value
-
-    return r1, r2, pick, to
+def batch_decode(hex_string):
+    """
+    Decode a long string of hex digits by splitting into 3-character chunks.
+    
+    Args:
+        hex_string (str): Long hex string to decode
+        
+    Returns:
+        list: List of tuples, each containing (pick, to, status)
+    """
+    if len(hex_string) % 3 != 0:
+        raise ValueError("Hex string length must be divisible by 3")
+    
+    moves = []
+    for i in range(0, len(hex_string), 3):
+        chunk = hex_string[i:i+3]
+        pick, to, status = decode_move(chunk)
+        moves.append((pick, to, status))
+    
+    return moves
