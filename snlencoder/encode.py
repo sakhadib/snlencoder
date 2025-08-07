@@ -1,4 +1,13 @@
 def encode_move(pick, to, status):
+    """
+    Status
+
+    00 - 0 = indicates [skip] / [not moving]
+    01 - 1 = indicates [ladder hit]
+    10 - 2 = indicates [snake hit]
+    11 - 3 = indicates [normal progress]
+
+    """
     if not (0 <= pick <= 6):
         raise ValueError("Pick must be between 0 and 6")
     if not (0 <= to <= 100):
@@ -49,3 +58,5 @@ def batch_decode(hex_string):
         moves.append((pick, to, status))
     
     return moves
+
+

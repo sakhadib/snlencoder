@@ -1,41 +1,52 @@
 # SNL Encoder
 
-A compact 16-bit binary encoder for Snake and Ladder game moves with parity check validation.
+A compact 12-bit binary encoder for Snake and Ladder game moves.
 
 ## Overview
 
-SNL Encoder is designed to efficiently store Snake and Ladder game data where players roll two dice and can strategically pick one die or skip their move. This package provides a space-efficient solution for storing billions of game moves by encoding each move into just 4 hexadecimal characters.
+SNL Encoder is designed to efficiently store Snake and Ladder game data where players make moves with different outcomes (skip, ladder hit, snake hit, or normal progress). This package provides a space-efficient solution for storing billions of game moves by encoding each move into just 3 hexadecimal characters.
 
 ## Problem Statement
 
-In a modified Snake and Ladder game:
-- Each player rolls 2 dice per turn
-- Players can pick one die result or skip the move based on strategy
+In a Snake and Ladder game:
+- Players make moves with dice picks (0-6)
+- Each move has a destination position (0-100)
+- Moves have different statuses based on what happens
 - Game data needs to be stored efficiently for billions of games
 
-Traditional storage would require significant space for move sequences. This encoder compresses each move from multiple data points into just 16 bits (4 hex characters).
+Traditional storage would require significant space for move sequences. This encoder compresses each move from multiple data points into just 12 bits (3 hex characters).
 
 ## Encoding Scheme
 
-Each move is encoded into 16 bits with the following structure:
+Each move is encoded into 12 bits with the following structure:
 
 | Component | Bits | Range | Description |
 |-----------|------|-------|-------------|
-| r1 | 3 bits | 1-6 | First dice roll |
-| r2 | 3 bits | 1-6 | Second dice roll |
-| pick | 2 bits | 0-2 | Player's choice (0=skip, 1=r1, 2=r2) |
-| to | 7 bits | 0-127 | Destination position |
-| parity | 1 bit | 0-1 | Error detection bit |
+| pick | 3 bits | 0-6 | Dice pick value |
+| to | 7 bits | 0-100 | Destination position |
+| status | 2 bits | 0-3 | Move outcome status |
 
-**Total: 16 bits = 4 hexadecimal characters**
+**Total: 12 bits = 3 hexadecimal characters**
+
+### Status Values
+- **0** (00): Skip / Not moving
+- **1** (01): Ladder hit
+- **2** (10): Snake hit  
+- **3** (11): Normal progress
 
 ### Space Efficiency
-- A 50-move game requires only 200 characters (50 × 4 hex chars)
+- A 50-move game requires only 150 characters (50 × 3 hex chars)
 - Massive space savings compared to traditional CSV storage
-- Built-in parity check for data integrity
+- No parity check needed due to simplified structure
 
 ## Installation
 
+### From GitHub
+```bash
+pip install git+https://github.com/sakhadib/snlencoder
+```
+
+### From PyPI (if published)
 ```bash
 pip install snlencoder
 ```
@@ -43,69 +54,78 @@ pip install snlencoder
 ## Usage
 
 ```python
-from snlencoder import encode_move, decode_move
+from snlencoder import encode_move, decode_move, batch_decode
 
-# Encode a move: dice rolls (3,5), player picks first die, moves to position 42
-encoded = encode_move(r1=3, r2=5, pick=3, to=42)
-print(encoded)  # Output: 4-character hex string like "6AA1"
+# Encode a move: pick=3, destination=42, ladder hit
+encoded = encode_move(pick=3, to=42, status=1)
+print(encoded)  # Output: 3-character hex string like "6A9"
 
 # Decode the move back
-r1, r2, pick, to = decode_move(encoded)
-print(f"Dice: {r1}, {r2} | Pick: {pick} | To: {to}")
-# Output: Dice: 3, 5 | Pick: 3 | To: 42
+pick, to, status = decode_move(encoded)
+print(f"Pick: {pick} | To: {to} | Status: {status}")
+# Output: Pick: 3 | To: 42 | Status: 1
+
+# Batch decode multiple moves
+game_sequence = "6A9502123"  # 3 moves encoded
+moves = batch_decode(game_sequence)
+print(moves)
+# Output: [(3, 42, 1), (2, 80, 2), (0, 72, 3)]
 ```
 
 ### Parameters
 
-#### `encode_move(r1, r2, pick, to)`
-- **r1**: First dice roll (1-6)
-- **r2**: Second dice roll (1-6)  
-- **pick**: Player's choice (0=skip, or the actual dice value chosen)
-- **to**: Destination position (0-127)
+#### `encode_move(pick, to, status)`
+- **pick**: Dice pick value (0-6)
+- **to**: Destination position (0-100)  
+- **status**: Move outcome (0=skip, 1=ladder, 2=snake, 3=normal)
 
 #### `decode_move(hex_str)`
-- **hex_str**: 4-character hexadecimal string
-- **Returns**: Tuple of (r1, r2, pick, to)
+- **hex_str**: 3-character hexadecimal string
+- **Returns**: Tuple of (pick, to, status)
 
-### Pick Value Logic
-- `pick = 0`: Player skips the move
-- `pick = r1`: Player chooses the first dice roll
-- `pick = r2`: Player chooses the second dice roll
+#### `batch_decode(hex_string)`
+- **hex_string**: Long hex string (length must be divisible by 3)
+- **Returns**: List of tuples, each containing (pick, to, status)
 
 ## Error Handling
 
 The encoder includes robust error checking:
 - **Input validation**: Ensures all parameters are within valid ranges
-- **Parity check**: Detects data corruption during storage/transmission
-- **Format validation**: Verifies hex string format during decoding
+- **Format validation**: Verifies hex string format and length during decoding
+- **Batch validation**: Ensures hex string length is divisible by 3
 
 ```python
 # These will raise ValueError:
-encode_move(7, 3, 1, 50)  # r1 out of range
-encode_move(3, 5, 1, 200)  # to position out of range
+encode_move(7, 50, 1)     # pick out of range
+encode_move(3, 150, 1)    # to position out of range
+encode_move(3, 50, 5)     # status out of range
 decode_move("XYZ")        # Invalid hex format
-decode_move("FFFF")       # May fail parity check
+decode_move("ABCD")       # Wrong length (must be 3 chars)
+batch_decode("ABCDE")     # Length not divisible by 3
 ```
 
 ## Example Game Storage
 
 ```python
+from snlencoder import encode_move, batch_decode
+
 # Store a sequence of moves
 moves = [
-    encode_move(3, 5, 3, 42),   # Pick first die, move to 42
-    encode_move(2, 6, 6, 48),   # Pick second die, move to 48  
-    encode_move(1, 4, 0, 48),   # Skip move, stay at 48
+    encode_move(3, 42, 1),   # Pick 3, move to 42, ladder hit
+    encode_move(0, 42, 0),   # Skip move, stay at 42
+    encode_move(5, 78, 2),   # Pick 5, move to 78, snake hit  
+    encode_move(2, 65, 3),   # Pick 2, move to 65, normal progress
 ]
 
 # Store as compact string
 game_sequence = "".join(moves)
-print(f"3 moves stored in {len(game_sequence)} characters")
+print(f"4 moves stored in {len(game_sequence)} characters")
 
-# Later decode the sequence
-for i in range(0, len(game_sequence), 4):
-    move_hex = game_sequence[i:i+4]
-    r1, r2, pick, to = decode_move(move_hex)
-    print(f"Move: dice({r1},{r2}) pick={pick} to={to}")
+# Later decode the entire sequence
+decoded_moves = batch_decode(game_sequence)
+for i, (pick, to, status) in enumerate(decoded_moves, 1):
+    status_names = ["skip", "ladder", "snake", "normal"]
+    print(f"Move {i}: pick={pick}, to={to}, {status_names[status]}")
 ```
 
 ## CSV Schema Integration
@@ -113,19 +133,19 @@ for i in range(0, len(game_sequence), 4):
 For game database storage:
 
 ```
-game_id, player_1, player_2, winner, dice_roll_count, move_sequence
-1001, "Alice", "Bob", "Alice", 45, "6AA142B8C3D5..."
+game_id, player_1, player_2, winner, move_count, move_sequence
+1001, "Alice", "Bob", "Alice", 45, "6A9502123A4B..."
 ```
 
-Where `move_sequence` contains all encoded moves concatenated together.
+Where `move_sequence` contains all encoded moves concatenated together (each move = 3 hex chars).
 
 ## Technical Details
 
 - **Language**: Python 3.6+
 - **Dependencies**: None (pure Python)
-- **Encoding**: 16-bit binary with hex representation
-- **Error Detection**: Single-bit parity check
+- **Encoding**: 12-bit binary with hex representation
 - **Performance**: Optimized for high-volume game data storage
+- **Bit Layout**: `pick(3) | to(7) | status(2)` = 12 bits total
 
 ## License
 
